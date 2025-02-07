@@ -27,16 +27,6 @@ class _LoginFormState extends State<LoginForm> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            TextField(
-              // controller: _emailController,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              // controller: _passwordController,
-              decoration: const InputDecoration(labelText: 'Password'),
-              obscureText: true,
-            ),
             const SizedBox(height: 16),
             IconTextButton(
               onPressed: () {
@@ -59,6 +49,8 @@ class _LoginFormState extends State<LoginForm> {
               icon: Image.asset('lib/assets/icons/apple.png'),
               backgroundColor: Colors.blue,
             ),
+            const SizedBox(height: 16),
+
           ],
         ),
       ),

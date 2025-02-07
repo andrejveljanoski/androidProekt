@@ -3,6 +3,8 @@ import 'package:foody/widgets/input_field.dart';
 import 'package:foody/widgets/primary_button.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // new import for Supabase auth
+import 'package:geocoding/geocoding.dart'; // new import for reverse geocoding
 
 class EmailSignup extends StatefulWidget {
   const EmailSignup({super.key});
@@ -23,6 +25,122 @@ class _EmailSignupState extends State<EmailSignup> {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
 
+  bool _isRestaurant = false; // new state variable
+  bool _isProcessing = false; // New flag to prevent rapid API calls
+
+  // Updated _signupApi function to log error details for debugging error 400
+  Future<bool> _signupApi({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+    required bool isRestaurant,
+    required String address,
+  }) async {
+    final AuthResponse authResponse =
+        await Supabase.instance.client.auth.signUp(
+      email: email,
+      password: password,
+    );
+    // Remove check for authResponse.error and only check if user is null
+    if (authResponse.user == null) {
+      print("SignUp Error: user is null");
+      return false;
+    }
+    final response = await Supabase.instance.client.from('profiles').insert({
+      // Remove int.parse conversion as id is non-numeric (UUID).
+      'id': authResponse.user!.id, // <-- fix applied
+      'first_name': firstName,
+      'last_name': lastName,
+      'is_restaurant': isRestaurant,
+      'address': address,
+    });
+    if (response.error != null) {
+      print("Profile Insert Error: ${response.error!.message}");
+      return false;
+    }
+    return true;
+  }
+
+  // Updated _signUp function to use signupApi
+  Future<void> _signUp() async {
+    if (_isProcessing) return; // Prevent duplicate calls
+    setState(() {
+      _isProcessing = true;
+    });
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final address = _addressController.text.trim();
+
+    try {
+      bool success = await _signupApi(
+        email: email,
+        password: password,
+        firstName: firstName,
+        lastName: lastName,
+        isRestaurant: _isRestaurant,
+        address: address,
+      );
+      if (!mounted) return;
+      if (success) {
+        if (_isRestaurant) {
+          Navigator.pushReplacementNamed(context, '/restauranthomepage');
+        } else {
+          Navigator.pushReplacementNamed(context, '/homescreen');
+        }
+      } else {
+        Navigator.pushReplacementNamed(context, '/loginscreen');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  // Add login function to check for auth and return an error if the account doesn't exist
+  Future<void> _login() async {
+    if (_isProcessing) return; // Prevent duplicate login calls
+    setState(() {
+      _isProcessing = true;
+    });
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    try {
+      final AuthResponse response =
+          await Supabase.instance.client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      if (!mounted) return;
+      if (response.user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("No account found. Please sign up first.")),
+        );
+      } else {
+        Navigator.pushReplacementNamed(context, '/homescreen');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
   void _nextStep() {
     if (_formKey.currentState!.validate()) {
       if (_currentStep < 2) {
@@ -33,8 +151,8 @@ class _EmailSignupState extends State<EmailSignup> {
               curve: Curves.easeIn);
         });
       } else {
-        Navigator.pushReplacementNamed(context, '/homescreen');
-        // submit form
+        // Instead of immediate navigation, call the sign-up function.
+        _signUp();
       }
     }
   }
@@ -66,6 +184,21 @@ class _EmailSignupState extends State<EmailSignup> {
       }
     }
     return await Geolocator.getCurrentPosition();
+  }
+
+  // New helper to convert coordinates to a readable address.
+  Future<String> _getAddressFromCoordinates(Position position) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude, position.longitude);
+      if (placemarks.isNotEmpty) {
+        final Placemark place = placemarks.first;
+        return '${place.street}, ${place.locality}, ${place.country}';
+      }
+    } catch (e) {
+      // Fallback to coordinates string on error.
+    }
+    return "${position.latitude}, ${position.longitude}";
   }
 
   @override
@@ -100,8 +233,13 @@ class _EmailSignupState extends State<EmailSignup> {
                   ),
                   const SizedBox(height: 16),
                   PrimaryButton(
+                    onPressed: _login, // updated login functionality
+                    text: 'Login',
+                  ),
+                  const SizedBox(height: 16),
+                  PrimaryButton(
                     onPressed: _nextStep,
-                    text: 'Next',
+                    text: 'Sign Up',
                   ),
                 ],
               ),
@@ -124,6 +262,23 @@ class _EmailSignupState extends State<EmailSignup> {
                     controller:
                         _lastNameController, // Ensure you have this controller
                     obscureText: false,
+                  ),
+                  const SizedBox(height: 16),
+                  // New Switch for selecting user type
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Customer'),
+                      Switch(
+                        value: _isRestaurant,
+                        onChanged: (value) {
+                          setState(() {
+                            _isRestaurant = value;
+                          });
+                        },
+                      ),
+                      const Text('Restaurant'),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -159,30 +314,44 @@ class _EmailSignupState extends State<EmailSignup> {
                   ),
                   const SizedBox(height: 16),
                   Expanded(
-                      child: FutureBuilder(
-                    future: _determinePosition(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Center(child: CircularProgressIndicator());
-                      } else if (snapshot.hasError) {
-                        return Center(
-                          child: Text('error: ${snapshot.error}'),
-                        );
-                      } else if (snapshot.hasData) {
-                        return GoogleMap(
-                          initialCameraPosition: CameraPosition(
-                            target: LatLng(snapshot.data!.latitude,
-                                snapshot.data!.longitude),
-                            zoom: 14,
-                          ),
-                        );
-                      } else {
-                        return Center(
-                          child: Text('No data found'),
-                        );
-                      }
-                    },
-                  )),
+                    child: FutureBuilder(
+                      future: _determinePosition(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return Center(child: CircularProgressIndicator());
+                        } else if (snapshot.hasError) {
+                          return Center(child: Text('error: ${snapshot.error}'));
+                        } else if (snapshot.hasData) {
+                          final position = snapshot.data as Position;
+                          return FutureBuilder<String>(
+                            future: _getAddressFromCoordinates(position),
+                            builder: (context, addressSnapshot) {
+                              if (addressSnapshot.connectionState == ConnectionState.waiting) {
+                                return Center(child: CircularProgressIndicator());
+                              }
+                              if (addressSnapshot.hasData) {
+                                if (_addressController.text.trim().isEmpty) {
+                                  _addressController.text = addressSnapshot.data!;
+                                }
+                              } else if (addressSnapshot.hasError) {
+                                if (_addressController.text.trim().isEmpty) {
+                                  _addressController.text = "${position.latitude}, ${position.longitude}";
+                                }
+                              }
+                              return GoogleMap(
+                                initialCameraPosition: CameraPosition(
+                                  target: LatLng(position.latitude, position.longitude),
+                                  zoom: 14,
+                                ),
+                              );
+                            },
+                          );
+                        } else {
+                          return Center(child: Text('No data found'));
+                        }
+                      },
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   InputField(
                     labelText: 'Address',
