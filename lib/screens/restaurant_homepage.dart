@@ -17,7 +17,7 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _mealNameController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
-  final TextEditingController _ingredientController = TextEditingController(); // for adding single ingredient
+  final TextEditingController _descriptionController = TextEditingController();
 
   final List<String> _ingredientsList = []; // list of ingredients
   File? _selectedImage; // selected image file from phone
@@ -44,21 +44,12 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
       'imageAsset': 'lib/assets/images/salad.png'
     },
   ];
-  
+
   Future<void> _pickImage() async {
     final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
       setState(() {
         _selectedImage = File(picked.path);
-      });
-    }
-  }
-
-  void _addIngredient() {
-    if (_ingredientController.text.trim().isNotEmpty) {
-      setState(() {
-        _ingredientsList.add(_ingredientController.text.trim());
-        _ingredientController.clear();
       });
     }
   }
@@ -69,13 +60,16 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
         _meals.add({
           'mealName': _mealNameController.text,
           'price': double.tryParse(_priceController.text) ?? 0.0,
-          'ingredients': _ingredientsList.join(', '),
+          'description': _mealNameController.text,
+
           // If a new image is selected, store its path; otherwise leave as empty
-          'imageAsset': _selectedImage != null ? _selectedImage!.path : 'lib/assets/images/default.png',
+          'imageAsset': _selectedImage != null
+              ? _selectedImage!.path
+              : 'lib/assets/images/default.png',
         });
         _mealNameController.clear();
         _priceController.clear();
-        _ingredientController.clear();
+        _descriptionController.clear();
         _ingredientsList.clear();
         _selectedImage = null;
       });
@@ -128,29 +122,21 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
                     obscureText: false,
                   ),
                   const SizedBox(height: 16),
-                  // Ingredient input and add button
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InputField(
-                          labelText: 'Ingredient',
-                          keyboardType: TextInputType.text,
-                          controller: _ingredientController,
-                          obscureText: false,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: _addIngredient,
-                        child: const Text('Add Ingredient'),
-                      ),
-                    ],
+                  InputField(
+                    labelText: 'Description',
+                    keyboardType: TextInputType.text,
+                    controller: _descriptionController,
+                    obscureText: false,
                   ),
+                  // Ingredient input and add button
+
                   const SizedBox(height: 8),
                   // Display the list of added ingredients
                   Wrap(
                     spacing: 8,
-                    children: _ingredientsList.map((ing) => Chip(label: Text(ing))).toList(),
+                    children: _ingredientsList
+                        .map((ing) => Chip(label: Text(ing)))
+                        .toList(),
                   ),
                   const SizedBox(height: 16),
                   PrimaryButton(
@@ -185,7 +171,8 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
                     restaurantName: meal['mealName'] ?? '',
                     rating: 0.0, // not used for meals
                     averagePrice: meal['price'],
-                    ingredients: meal['ingredients'], // pass ingredients for meal display
+                    ingredients: meal[
+                        'ingredients'], // pass ingredients for meal display
                   );
                 },
               ),

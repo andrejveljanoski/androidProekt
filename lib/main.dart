@@ -45,7 +45,7 @@ class MyApp extends StatelessWidget {
       // Start with LoginPage first for better flow
       home: const WelcomePage(),
       routes: {
-        '/login': (context) => const LoginForm(),
+        '/login': (context) => const RestaurantHomepage(),
         '/home': (context) => const MyHomePage(title: 'Foody'),
         '/signup': (context) => const EmailSignup(),
         '/homescreen': (context) => const HomeScreen(),

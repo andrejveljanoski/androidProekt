@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:foody/widgets/card_with_icon.dart';
 import 'package:foody/widgets/bottom_navigation.dart';
+import 'package:foody/widgets/aorder_widget.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -13,23 +13,24 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(
+        title: const Text('Your Orders'),
+      ),
       body: ListView(
         children: [
-          CardWithIcon(
-            icon: Icon(Icons.home),
-            title: 'Delivery Address',
-            description: 'skopje 1000',
+          AOrderWidget(
+            orderId: '1',
+            date: DateTime(2023, 1, 1),
+            price: 29.99,
+            customerId: 'customer1',
+            restauramtId: 'restaurant1',
           ),
-          CardWithIcon(
-            icon: Icon(Icons.manage_accounts),
-            title: 'Account Details',
-            description: 'Details',
-          ),
-          CardWithIcon(
-            icon: Icon(Icons.login),
-            title: 'Sign Out',
-            color: Colors.red,
+          AOrderWidget(
+            orderId: '2',
+            date: DateTime(2023, 1, 2),
+            price: 49.99,
+            customerId: 'customer2',
+            restauramtId: 'restaurant2',
           ),
         ],
       ),

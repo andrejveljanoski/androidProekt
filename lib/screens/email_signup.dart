@@ -24,56 +24,70 @@ class _EmailSignupState extends State<EmailSignup> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _restaurantNameController =
+      TextEditingController();
 
   bool _isRestaurant = false; // new state variable
   bool _isProcessing = false; // New flag to prevent rapid API calls
 
-  // Updated _signupApi function to log error details for debugging error 400
+  // Modified _signupApi to use maybeSingle() and proper response checking.
   Future<bool> _signupApi({
     required String email,
     required String password,
-    required String firstName,
-    required String lastName,
+    required String? firstName,
+    required String? lastName,
     required bool isRestaurant,
     required String address,
+    String? restaurantName,
   }) async {
     final AuthResponse authResponse =
         await Supabase.instance.client.auth.signUp(
       email: email,
       password: password,
     );
-    // Remove check for authResponse.error and only check if user is null
+    debugPrint("AuthResponse details: $authResponse");
     if (authResponse.user == null) {
-      print("SignUp Error: user is null");
+      debugPrint("SignUp Error: authResponse.user is null");
       return false;
     }
     final response = await Supabase.instance.client.from('profiles').insert({
-      // Remove int.parse conversion as id is non-numeric (UUID).
-      'id': authResponse.user!.id, // <-- fix applied
-      'first_name': firstName,
-      'last_name': lastName,
+      'id': authResponse.user!.id,
       'is_restaurant': isRestaurant,
+      'first_name': isRestaurant ? null : firstName,
+      'last_name': isRestaurant ? null : lastName,
+      'restaurant_name': isRestaurant ? restaurantName : null,
+      'rating': isRestaurant ? 0.0 : null,
+      'img_url': isRestaurant ? '' : null,
       'address': address,
-    });
-    if (response.error != null) {
-      print("Profile Insert Error: ${response.error!.message}");
+    }).select().maybeSingle();
+    debugPrint("Profile Insert Response: $response");
+    if (response == null) {
+      debugPrint("Profile Insert Error: Response is null");
+      return false;
+    }
+    if (response case {'error': var error}) {
+      debugPrint("Profile Insert Error: ${error['message']}");
       return false;
     }
     return true;
   }
 
-  // Updated _signUp function to use signupApi
+  // Modified _signUp to handle restaurant fields.
   Future<void> _signUp() async {
-    if (_isProcessing) return; // Prevent duplicate calls
+    if (_isProcessing) return;
     setState(() {
       _isProcessing = true;
     });
 
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
     final address = _addressController.text.trim();
+    final String? restaurantName =
+        _isRestaurant ? _restaurantNameController.text.trim() : null;
+    final String? firstName =
+        _isRestaurant ? null : _firstNameController.text.trim();
+    final String? lastName =
+        _isRestaurant ? null : _lastNameController.text.trim();
 
     try {
       bool success = await _signupApi(
@@ -83,21 +97,22 @@ class _EmailSignupState extends State<EmailSignup> {
         lastName: lastName,
         isRestaurant: _isRestaurant,
         address: address,
+        restaurantName: restaurantName,
       );
+      debugPrint("Signup API success: $success");
       if (!mounted) return;
       if (success) {
-        if (_isRestaurant) {
-          Navigator.pushReplacementNamed(context, '/restauranthomepage');
-        } else {
-          Navigator.pushReplacementNamed(context, '/homescreen');
-        }
+        handleSignupSuccess(); // updated call with no parameter
       } else {
-        Navigator.pushReplacementNamed(context, '/loginscreen');
+        debugPrint("Signup failed, redirecting to /login");
+        Navigator.pushReplacementNamed(context, '/login');
       }
-    } catch (e) {
+    } catch (e, stacktrace) {
+      debugPrint("Exception during signup: $e");
+      debugPrint("$stacktrace");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(content: Text("Signup Exception: $e")),
       );
     } finally {
       setState(() {
@@ -189,8 +204,8 @@ class _EmailSignupState extends State<EmailSignup> {
   // New helper to convert coordinates to a readable address.
   Future<String> _getAddressFromCoordinates(Position position) async {
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-          position.latitude, position.longitude);
+      List<Placemark> placemarks =
+          await placemarkFromCoordinates(position.latitude, position.longitude);
       if (placemarks.isNotEmpty) {
         final Placemark place = placemarks.first;
         return '${place.street}, ${place.locality}, ${place.country}';
@@ -199,6 +214,14 @@ class _EmailSignupState extends State<EmailSignup> {
       // Fallback to coordinates string on error.
     }
     return "${position.latitude}, ${position.longitude}";
+  }
+
+  void handleSignupSuccess() {
+    if (_isRestaurant) {
+      Navigator.pushReplacementNamed(context, '/restauranthomepage');
+    } else {
+      Navigator.pushReplacementNamed(context, '/restaurantscreen');
+    }
   }
 
   @override
@@ -248,21 +271,22 @@ class _EmailSignupState extends State<EmailSignup> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  InputField(
-                    labelText: 'First Name',
-                    keyboardType: TextInputType.text,
-                    controller:
-                        _firstNameController, // Ensure you have this controller
-                    obscureText: false,
-                  ),
-                  const SizedBox(height: 16),
-                  InputField(
-                    labelText: 'Last Name',
-                    keyboardType: TextInputType.text,
-                    controller:
-                        _lastNameController, // Ensure you have this controller
-                    obscureText: false,
-                  ),
+                  if (_isRestaurant)
+                    InputField(
+                      controller: _restaurantNameController,
+                      labelText: "Restaurant Name",
+                    )
+                  else ...[
+                    InputField(
+                      controller: _firstNameController,
+                      labelText: "First Name",
+                    ),
+                    const SizedBox(height: 16),
+                    InputField(
+                      controller: _lastNameController,
+                      labelText: "Last Name",
+                    ),
+                  ], // <-- Added missing closing bracket and comma here.
                   const SizedBox(height: 16),
                   // New Switch for selecting user type
                   Row(
@@ -317,30 +341,43 @@ class _EmailSignupState extends State<EmailSignup> {
                     child: FutureBuilder(
                       future: _determinePosition(),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
                           return Center(child: CircularProgressIndicator());
                         } else if (snapshot.hasError) {
-                          return Center(child: Text('error: ${snapshot.error}'));
+                          return Center(
+                              child: Text('error: ${snapshot.error}'));
                         } else if (snapshot.hasData) {
                           final position = snapshot.data as Position;
                           return FutureBuilder<String>(
                             future: _getAddressFromCoordinates(position),
                             builder: (context, addressSnapshot) {
-                              if (addressSnapshot.connectionState == ConnectionState.waiting) {
-                                return Center(child: CircularProgressIndicator());
+                              if (addressSnapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return Center(
+                                    child: CircularProgressIndicator());
                               }
                               if (addressSnapshot.hasData) {
                                 if (_addressController.text.trim().isEmpty) {
-                                  _addressController.text = addressSnapshot.data!;
+                                  WidgetsBinding.instance
+                                      .addPostFrameCallback((_) {
+                                    _addressController.text =
+                                        addressSnapshot.data!;
+                                  });
                                 }
                               } else if (addressSnapshot.hasError) {
                                 if (_addressController.text.trim().isEmpty) {
-                                  _addressController.text = "${position.latitude}, ${position.longitude}";
+                                  WidgetsBinding.instance
+                                      .addPostFrameCallback((_) {
+                                    _addressController.text =
+                                        "${position.latitude}, ${position.longitude}";
+                                  });
                                 }
                               }
                               return GoogleMap(
                                 initialCameraPosition: CameraPosition(
-                                  target: LatLng(position.latitude, position.longitude),
+                                  target: LatLng(
+                                      position.latitude, position.longitude),
                                   zoom: 14,
                                 ),
                               );
@@ -372,7 +409,8 @@ class _EmailSignupState extends State<EmailSignup> {
                       const SizedBox(width: 16),
                       Expanded(
                         child: PrimaryButton(
-                          onPressed: _nextStep,
+                          // updated: call _signUp to handle routing based on _isRestaurant state
+                          onPressed: _signUp,
                           text: 'Submit',
                         ),
                       ),
