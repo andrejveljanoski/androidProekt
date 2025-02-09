@@ -5,6 +5,7 @@ import 'package:foody/widgets/primary_button.dart';
 import 'package:foody/widgets/restaurant_card.dart';
 import 'package:image_picker/image_picker.dart'; // new import for image picker
 import 'package:foody/widgets/bottom_navigation.dart'; // new import for bottom navigation
+import 'package:supabase_flutter/supabase_flutter.dart'; // new import for supabase
 
 class RestaurantHomepage extends StatefulWidget {
   const RestaurantHomepage({super.key});
@@ -23,27 +24,8 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
   File? _selectedImage; // selected image file from phone
   final ImagePicker _picker = ImagePicker(); // image picker instance
 
-  // Hardcoded meals with imageAsset key
-  final List<Map<String, dynamic>> _meals = [
-    {
-      'mealName': 'Spaghetti',
-      'price': 12.99,
-      'ingredients': 'Pasta, Tomato, Basil',
-      'imageAsset': 'lib/assets/images/spaghetti.png'
-    },
-    {
-      'mealName': 'Burger',
-      'price': 9.99,
-      'ingredients': 'Bun, Beef, Lettuce, Tomato',
-      'imageAsset': 'lib/assets/images/burger.png'
-    },
-    {
-      'mealName': 'Salad',
-      'price': 7.50,
-      'ingredients': 'Lettuce, Cucumber, Carrot',
-      'imageAsset': 'lib/assets/images/salad.png'
-    },
-  ];
+  // Initialize meals as an empty list
+  final List<Map<String, dynamic>> _meals = [];
 
   Future<void> _pickImage() async {
     final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
@@ -54,25 +36,82 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
     }
   }
 
-  void _addMeal() {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _meals.add({
-          'mealName': _mealNameController.text,
-          'price': double.tryParse(_priceController.text) ?? 0.0,
-          'description': _mealNameController.text,
+  // Update _addMeal to be asynchronous and insert to supabase before updating _meals
+  Future<void> _addMeal() async {
+    if (!_formKey.currentState!.validate()) return;
+    final double price = double.tryParse(_priceController.text) ?? 0.0;
+    final String? bossId = Supabase.instance.client.auth.currentUser?.id;
+    if (bossId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Boss profile not found')),
+      );
+      return;
+    }
 
-          // If a new image is selected, store its path; otherwise leave as empty
-          'imageAsset': _selectedImage != null
-              ? _selectedImage!.path
-              : 'lib/assets/images/default.png',
+    // Upload image if selected; use default if not.
+    String imageUrl = 'https://example.com/default.png';
+    if (_selectedImage != null) {
+      final fileName = 'meal_${DateTime.now().millisecondsSinceEpoch}.png';
+      try {
+        // Upload image; the upload call now returns a String,
+        // so simply await its completion.
+        await Supabase.instance.client.storage
+            .from('meals')
+            .upload(fileName, _selectedImage!);
+        final publicURLResponse = Supabase.instance.client.storage
+            .from('meals')
+            .getPublicUrl(fileName);
+        imageUrl = publicURLResponse; // updated to use the returned String
+      } catch (uploadError) {
+        debugPrint('Image upload error: $uploadError');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error uploading image: $uploadError')),
+        );
+        return;
+      }
+    }
+
+    try {
+      final insertedMeals =
+          await Supabase.instance.client.from('meals').insert({
+        'name': _mealNameController.text,
+        'price': price,
+        'rating': 0,
+        'restaurant_id': bossId,
+        'img_url': imageUrl, // using uploaded image URL (or default)
+        'description': _descriptionController.text
+      }).select();
+      if (!mounted) return;
+      if (insertedMeals.isNotEmpty) {
+        final insertedMeal = insertedMeals[0];
+        setState(() {
+          _meals.add({
+            'mealName': insertedMeal['name'],
+            'price': insertedMeal['price'],
+            'description': insertedMeal['description'],
+            'imageAsset': insertedMeal['img_url']
+          });
+          _mealNameController.clear();
+          _priceController.clear();
+          _descriptionController.clear();
+          _ingredientsList.clear();
+          _selectedImage = null;
         });
-        _mealNameController.clear();
-        _priceController.clear();
-        _descriptionController.clear();
-        _ingredientsList.clear();
-        _selectedImage = null;
-      });
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: No meal data returned')),
+        );
+      }
+    } catch (e) {
+      // Log the error to the console for debugging
+      debugPrint('Error adding meal: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error adding meal: ${e.toString()}')),
+      );
     }
   }
 
@@ -94,6 +133,12 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
                     keyboardType: TextInputType.text,
                     controller: _mealNameController,
                     obscureText: false,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Enter a meal name';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 16),
                   // Replace image asset text input with image picker button and preview
@@ -116,10 +161,16 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
                   ),
                   const SizedBox(height: 16),
                   InputField(
-                    labelText: 'Price',
+                    labelText: 'Price(also add decimal point)',
                     keyboardType: TextInputType.number,
                     controller: _priceController,
                     obscureText: false,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Enter a price';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 16),
                   InputField(
@@ -127,6 +178,12 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
                     keyboardType: TextInputType.text,
                     controller: _descriptionController,
                     obscureText: false,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Enter a description';
+                      }
+                      return null;
+                    },
                   ),
                   // Ingredient input and add button
 
@@ -155,14 +212,15 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
                   final meal = _meals[index];
                   // Check if imageAsset is a file path or asset path
                   Widget mealImage;
-                  if (File(meal['imageAsset']).existsSync()) {
-                    mealImage = Image.file(
-                      File(meal['imageAsset']),
-                      fit: BoxFit.cover,
-                    );
+                  if (meal['imageAsset']?.startsWith('http') ?? false) {
+                    mealImage =
+                        Image.network(meal['imageAsset'], fit: BoxFit.cover);
+                  } else if (File(meal['imageAsset'] ?? '').existsSync()) {
+                    mealImage =
+                        Image.file(File(meal['imageAsset']), fit: BoxFit.cover);
                   } else {
                     mealImage = Image.asset(
-                      meal['imageAsset'] ?? 'lib/assets/images/default.png',
+                      'lib/assets/images/default.png',
                       fit: BoxFit.cover,
                     );
                   }

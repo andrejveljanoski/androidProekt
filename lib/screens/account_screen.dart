@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:foody/widgets/card_with_icon.dart';
 import 'package:foody/widgets/bottom_navigation.dart';
@@ -19,6 +21,9 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
+  bool _isRestaurant = false;
+  final TextEditingController _restaurantNameController =
+      TextEditingController();
   // Existing state variable for profile image.
   String? _profileImageUrl;
 
@@ -26,6 +31,77 @@ class _AccountScreenState extends State<AccountScreen> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
+
+  // New state variable for display name
+  String? _displayName;
+  String _address = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    final response = await Supabase.instance.client
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+    if (response != null ) {
+      setState(() {
+        _isRestaurant = response['is_restaurant'] == true;
+        _address = response['address'] ?? '';
+        if (_isRestaurant) {
+          _restaurantNameController.text = response['restaurant_name'] ?? '';
+          _displayName =
+              (response['restaurant_name'] ?? 'Restaurant').toString();
+        } else {
+          _firstNameController.text = response['first_name'] ?? '';
+          _lastNameController.text = response['last_name'] ?? '';
+          _displayName =
+              "${response['first_name'] ?? ''} ${response['last_name'] ?? ''}"
+                  .trim();
+        }
+        _addressController.text = response['address'] ?? '';
+      });
+    }
+  }
+
+  Future<void> _updateProfile() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    // Change map type to allow null values.
+    final Map<String, Object?> updates = {
+      'address': _addressController.text.trim(),
+      'is_restaurant': _isRestaurant,
+    };
+
+    if (_isRestaurant) {
+      updates['restaurant_name'] = _restaurantNameController.text.trim();
+      updates['first_name'] = null;
+      updates['last_name'] = null;
+    } else {
+      updates['first_name'] = _firstNameController.text.trim();
+      updates['last_name'] = _lastNameController.text.trim();
+      updates['restaurant_name'] = null;
+    }
+
+    await Supabase.instance.client
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id);
+
+    // Update local address variable for UI display
+    setState(() {
+      _address = _addressController.text.trim();
+    });
+  }
 
   // Add helper methods from email_signup.dart for location/address.
   Future<Position> _determinePosition() async {
@@ -53,21 +129,6 @@ class _AccountScreenState extends State<AccountScreen> {
     return await Geolocator.getCurrentPosition();
   }
 
-  Future<void> _getAddressFromLatLng(Position position) async {
-    try {
-      List<Placemark> placemarks =
-          await placemarkFromCoordinates(position.latitude, position.longitude);
-
-      Placemark place = placemarks[0];
-
-      setState(() {
-        _addressController.text =
-            "${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}";
-      });
-    } catch (e) {
-      print(e);
-    }
-  }
 
   Future<String> _getAddressFromCoordinates(Position position) async {
     try {
@@ -110,6 +171,13 @@ class _AccountScreenState extends State<AccountScreen> {
           final String publicUrl = Supabase.instance.client.storage
               .from('images')
               .getPublicUrl(fileName);
+          // Update the profiles table with the new profile image URL.
+          final user = Supabase.instance.client.auth.currentUser;
+          if (user != null) {
+            await Supabase.instance.client
+                .from('profiles')
+                .update({'img_url': publicUrl}).eq('id', user.id);
+          }
           if (!mounted) return;
           setState(() {
             _profileImageUrl = publicUrl;
@@ -134,7 +202,7 @@ class _AccountScreenState extends State<AccountScreen> {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        child: Container(
+        child: SizedBox(
           height: MediaQuery.of(context).size.height * 0.8,
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -209,7 +277,10 @@ class _AccountScreenState extends State<AccountScreen> {
                   children: [
                     Expanded(
                       child: PrimaryButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () async {
+                          await _updateProfile();
+                          Navigator.pop(context);
+                        },
                         text: 'Save',
                       ),
                     ),
@@ -227,41 +298,50 @@ class _AccountScreenState extends State<AccountScreen> {
   void _editAccountDetails() {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text('Edit Account Details'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            InputField(
-              controller: _firstNameController,
-              labelText: 'First Name',
-            ),
-            SizedBox(height: 16),
-            InputField(
-              controller: _lastNameController,
-              labelText: 'Last Name',
-            ),
-            SizedBox(height: 16),
+      builder: (_) {
+        return AlertDialog(
+          title: Text('Edit Account Details'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isRestaurant)
+                InputField(
+                  controller: _restaurantNameController,
+                  labelText: 'Restaurant Name',
+                )
+              else ...[
+                InputField(
+                  controller: _firstNameController,
+                  labelText: 'First Name',
+                ),
+                SizedBox(height: 16),
+                InputField(
+                  controller: _lastNameController,
+                  labelText: 'Last Name',
+                ),
+              ],
+              SizedBox(height: 16),
+              PrimaryButton(
+                text: 'Change Profile Picture',
+                onPressed: _changeProfileImage,
+              ),
+            ],
+          ),
+          actions: [
             PrimaryButton(
-              text: 'Change Profile Picture',
-              onPressed: _changeProfileImage,
+              text: 'Save Changes',
+              onPressed: () async {
+                await _updateProfile();
+                Navigator.pop(context);
+              },
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel'),
             ),
           ],
-        ),
-        actions: [
-          PrimaryButton(
-            text: 'Save Changes',
-            onPressed: () {
-              // TODO: Implement save changes logic
-              Navigator.pop(context);
-            },
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -291,7 +371,7 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           SizedBox(height: 20),
           Text(
-            'Account 1',
+            _displayName ?? "",
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           SizedBox(height: 20),
@@ -303,7 +383,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   child: CardWithIcon(
                     icon: Icon(Icons.home),
                     title: 'Delivery Address',
-                    description: 'skopje 1000',
+                    description: _address,
                   ),
                 ),
                 InkWell(

@@ -5,6 +5,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // new import for Supabase auth
 import 'package:geocoding/geocoding.dart'; // new import for reverse geocoding
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server.dart';
 
 class EmailSignup extends StatefulWidget {
   const EmailSignup({super.key});
@@ -50,16 +52,20 @@ class _EmailSignupState extends State<EmailSignup> {
       debugPrint("SignUp Error: authResponse.user is null");
       return false;
     }
-    final response = await Supabase.instance.client.from('profiles').insert({
-      'id': authResponse.user!.id,
-      'is_restaurant': isRestaurant,
-      'first_name': isRestaurant ? null : firstName,
-      'last_name': isRestaurant ? null : lastName,
-      'restaurant_name': isRestaurant ? restaurantName : null,
-      'rating': isRestaurant ? 0.0 : null,
-      'img_url': isRestaurant ? '' : null,
-      'address': address,
-    }).select().maybeSingle();
+    final response = await Supabase.instance.client
+        .from('profiles')
+        .insert({
+          'id': authResponse.user!.id,
+          'is_restaurant': isRestaurant,
+          'first_name': isRestaurant ? null : firstName,
+          'last_name': isRestaurant ? null : lastName,
+          'restaurant_name': isRestaurant ? restaurantName : null,
+          'rating': isRestaurant ? 0.0 : null,
+          'img_url': isRestaurant ? '' : null,
+          'address': address,
+        })
+        .select()
+        .maybeSingle();
     debugPrint("Profile Insert Response: $response");
     if (response == null) {
       debugPrint("Profile Insert Error: Response is null");
@@ -142,7 +148,18 @@ class _EmailSignupState extends State<EmailSignup> {
           SnackBar(content: Text("No account found. Please sign up first.")),
         );
       } else {
-        Navigator.pushReplacementNamed(context, '/homescreen');
+        final userId = response.user!.id;
+        final profileData = await Supabase.instance.client
+            .from('profiles')
+            .select('is_restaurant')
+            .eq('id', userId)
+            .single() as Map<String, dynamic>;
+        final bool isRestaurant = profileData['is_restaurant'] == true;
+        if (isRestaurant) {
+          Navigator.pushReplacementNamed(context, '/restauranthomepage');
+        } else {
+          Navigator.pushReplacementNamed(context, '/homescreen');
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -216,11 +233,40 @@ class _EmailSignupState extends State<EmailSignup> {
     return "${position.latitude}, ${position.longitude}";
   }
 
+  // New helper to send a confirmation email.
+  Future<void> _sendConfirmationEmail(String recipient) async {
+    String username = 'andrej@foody.software';
+    String password = 'Andrejveljanosk1'; // or App Password
+
+    final smtpServer = SmtpServer(
+      'smtp.titan.email',
+      port: 465,
+      ssl: true,
+      username: username,
+      password: password,
+    );
+
+    final message = Message()
+      ..from = Address(username, 'Foody')
+      ..recipients.add(recipient)
+      ..subject = 'Welcome to Foody!'
+      ..text = 'Thank you for signing up with Foody!';
+
+    try {
+      final sendReport = await send(message, smtpServer);
+      print('Email sent: ${sendReport.toString()}');
+    } catch (e) {
+      debugPrint('Error sending email: $e');
+    }
+  }
+
   void handleSignupSuccess() {
+    _sendConfirmationEmail(
+        _emailController.text.trim()); // Send confirmation email
     if (_isRestaurant) {
       Navigator.pushReplacementNamed(context, '/restauranthomepage');
     } else {
-      Navigator.pushReplacementNamed(context, '/restaurantscreen');
+      Navigator.pushReplacementNamed(context, '/homescreen');
     }
   }
 

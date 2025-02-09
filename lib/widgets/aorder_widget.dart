@@ -8,13 +8,13 @@ class AOrderWidget extends StatelessWidget {
   final String restauramtId;
 
   const AOrderWidget({
-    Key? key,
+    super.key,
     required this.orderId,
     required this.date,
     required this.price,
     required this.customerId,
     required this.restauramtId,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

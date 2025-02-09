@@ -5,6 +5,7 @@ class InputField extends StatelessWidget {
   final String labelText;
   final bool obscureText;
   final TextInputType keyboardType;
+  final String? Function(String?)? validator;
 
   const InputField({
     super.key,
@@ -12,6 +13,7 @@ class InputField extends StatelessWidget {
     required this.labelText,
     this.obscureText = false,
     this.keyboardType = TextInputType.text,
+    this.validator,
   });
 
   @override
@@ -26,12 +28,7 @@ class InputField extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
       ),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Please enter your $labelText';
-        }
-        return null;
-      },
+      validator: validator,
     );
   }
 }
