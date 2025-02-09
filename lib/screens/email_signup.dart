@@ -153,7 +153,7 @@ class _EmailSignupState extends State<EmailSignup> {
             .from('profiles')
             .select('is_restaurant')
             .eq('id', userId)
-            .single() as Map<String, dynamic>;
+            .single();
         final bool isRestaurant = profileData['is_restaurant'] == true;
         if (isRestaurant) {
           Navigator.pushReplacementNamed(context, '/restauranthomepage');

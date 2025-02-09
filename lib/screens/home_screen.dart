@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:foody/widgets/bottom_navigation.dart';
 import 'package:foody/widgets/restaurant_card.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:foody/screens/restaurant_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -30,11 +31,12 @@ class _HomeScreenState extends State<HomeScreen> {
         _restaurants.clear();
         for (final restaurant in data) {
           _restaurants.add({
-            'imageUrl': restaurant['img_url'], // adjust column names if needed
-            'restaurantName': restaurant['restaurant_name'],
-            'rating':
-                restaurant['rating'] ?? 0.0, // default value if not provided
-            'averagePrice': restaurant['average_price'] ?? 0.0, // default value
+            'id': restaurant['id'],
+            'img_url': restaurant['img_url'],
+            'restaurant_name': restaurant['restaurant_name'],
+            'address': restaurant['address'],
+            'rating': restaurant['rating'] ?? 0.0,
+            'average_price': restaurant['average_price'] ?? 0.0,
           });
         }
       });
@@ -51,14 +53,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: _restaurants.map((restaurant) {
-                return RestaurantCard(
-                  imageUrl: restaurant['imageUrl'] is String
-                      ? Image.network(restaurant['imageUrl'], fit: BoxFit.cover)
-                      : Image.asset('lib/assets/images/default.png',
-                          fit: BoxFit.cover),
-                  restaurantName: restaurant['restaurantName'] ?? '',
-                  rating: restaurant['rating'],
-                  averagePrice: restaurant['averagePrice'],
+                return InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => RestaurantScreen(restaurant: restaurant),
+                      ),
+                    );
+                  },
+                  child: RestaurantCard(
+                    imageUrl: restaurant['img_url'] is String
+                        ? Image.network(restaurant['img_url'], fit: BoxFit.cover)
+                        : Image.asset('lib/assets/images/default.png',
+                            fit: BoxFit.cover),
+                    restaurantName: restaurant['restaurant_name'] ?? '',
+                    rating: restaurant['rating'],
+                    averagePrice: restaurant['average_price'],
+                  ),
                 );
               }).toList(),
             ),

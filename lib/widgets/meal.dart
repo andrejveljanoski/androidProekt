@@ -1,33 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:foody/widgets/primary_button.dart';
+import 'package:foody/widgets/quantity_counter.dart';
 
-class Meal extends StatefulWidget {
+class Meal extends StatelessWidget {
+  final String id;
   final String name;
   final String description;
   final double price;
   final String imageUrl;
+  final int initialQuantity;
+  final ValueChanged<int> onQuantityChanged;
 
   const Meal({
     super.key,
+    required this.id,
     required this.name,
     required this.description,
     required this.price,
     required this.imageUrl,
+    this.initialQuantity = 0,
+    required this.onQuantityChanged,
   });
 
-  @override
-  State<Meal> createState() => _MealState();
-}
-
-class _MealState extends State<Meal> {
-  bool _isCounter = false;
-  int _quantity = 0;
-
-  void _toggleCounter() {
-    setState(() {
-      _isCounter = true;
-      _quantity = 1;
-    });
+  Widget buildMealImage() {
+    // Check if the imageUrl is a network URL or an asset path.
+    if (imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            width: 100,
+            height: 100,
+            color: Colors.grey[300],
+            child: const Icon(Icons.broken_image, size: 50),
+          );
+        },
+      );
+    } else {
+      return Image.asset(
+        imageUrl,
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+      );
+    }
   }
 
   @override
@@ -35,7 +54,7 @@ class _MealState extends State<Meal> {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15), // rounded border
+        borderRadius: BorderRadius.circular(15), // Rounded border
       ),
       child: Padding(
         padding: const EdgeInsets.all(8.0),
@@ -43,12 +62,7 @@ class _MealState extends State<Meal> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                widget.imageUrl,
-                width: 100,
-                height: 100,
-                fit: BoxFit.cover,
-              ),
+              child: buildMealImage(),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -56,18 +70,18 @@ class _MealState extends State<Meal> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.name,
+                    name,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   Text(
-                    widget.description,
+                    description,
                     style: const TextStyle(fontSize: 14),
                   ),
                   Text(
-                    '\$${widget.price.toStringAsFixed(2)}',
+                    '\$${price.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -76,41 +90,10 @@ class _MealState extends State<Meal> {
                 ],
               ),
             ),
-            if (!_isCounter)
-              ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 80, minHeight: 36), // added constraints
-                child: PrimaryButton(
-                  onPressed: _toggleCounter,
-                  text: 'Add',
-                ),
-              )
-            else
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove),
-                    onPressed: () {
-                      setState(() {
-                        if (_quantity > 0) _quantity--;
-                      });
-                    },
-                  ),
-                  Text(
-                    '$_quantity',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      setState(() {
-                        _quantity++;
-                      });
-                    },
-                  ),
-                ],
-              ),
+            QuantityCounter(
+              initialQuantity: initialQuantity,
+              onQuantityChanged: onQuantityChanged,
+            ),
           ],
         ),
       ),

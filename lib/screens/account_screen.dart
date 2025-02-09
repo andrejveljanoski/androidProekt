@@ -24,6 +24,8 @@ class _AccountScreenState extends State<AccountScreen> {
   bool _isRestaurant = false;
   final TextEditingController _restaurantNameController =
       TextEditingController();
+  final TextEditingController _restaurantDescriptionController =
+      TextEditingController();
   // Existing state variable for profile image.
   String? _profileImageUrl;
 
@@ -52,7 +54,7 @@ class _AccountScreenState extends State<AccountScreen> {
         .eq('id', user.id)
         .maybeSingle();
 
-    if (response != null ) {
+    if (response != null) {
       setState(() {
         _isRestaurant = response['is_restaurant'] == true;
         _address = response['address'] ?? '';
@@ -60,6 +62,8 @@ class _AccountScreenState extends State<AccountScreen> {
           _restaurantNameController.text = response['restaurant_name'] ?? '';
           _displayName =
               (response['restaurant_name'] ?? 'Restaurant').toString();
+          _restaurantDescriptionController.text =
+              response['description'] ?? 'Mixed Cuisine';
         } else {
           _firstNameController.text = response['first_name'] ?? '';
           _lastNameController.text = response['last_name'] ?? '';
@@ -128,7 +132,6 @@ class _AccountScreenState extends State<AccountScreen> {
 
     return await Geolocator.getCurrentPosition();
   }
-
 
   Future<String> _getAddressFromCoordinates(Position position) async {
     try {
@@ -304,12 +307,17 @@ class _AccountScreenState extends State<AccountScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_isRestaurant)
+              if (_isRestaurant) ...[
                 InputField(
                   controller: _restaurantNameController,
                   labelText: 'Restaurant Name',
-                )
-              else ...[
+                ),
+                SizedBox(height: 16),
+                InputField(
+                  controller: _restaurantDescriptionController,
+                  labelText: 'Restaurant description',
+                ),
+              ] else ...[
                 InputField(
                   controller: _firstNameController,
                   labelText: 'First Name',
