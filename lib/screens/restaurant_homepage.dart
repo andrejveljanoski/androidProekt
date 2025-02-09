@@ -27,6 +27,12 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
   // Initialize meals as an empty list
   final List<Map<String, dynamic>> _meals = [];
 
+  @override
+  void initState() {
+    super.initState();
+    _fetchMeals(); // new call to load meals from Supabase
+  }
+
   Future<void> _pickImage() async {
     final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
@@ -112,6 +118,32 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error adding meal: ${e.toString()}')),
       );
+    }
+  }
+
+  // New function to fetch meals for the current restaurant
+  Future<void> _fetchMeals() async {
+    final bossId = Supabase.instance.client.auth.currentUser?.id;
+    if (bossId == null) return;
+    try {
+      final meals = await Supabase.instance.client
+          .from('meals')
+          .select()
+          .eq('restaurant_id', bossId) as List<dynamic>;
+      setState(() {
+        _meals.clear();
+        for (final meal in meals) {
+          _meals.add({
+            'mealName': meal['name'],
+            'price': meal['price'],
+            'description': meal['description'],
+            'imageAsset': meal['img_url'],
+            'ingredients': meal['ingredients'],
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('Error fetching meals: $e');
     }
   }
 

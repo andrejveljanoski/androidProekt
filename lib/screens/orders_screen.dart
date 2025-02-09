@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:foody/widgets/bottom_navigation.dart';
-import 'package:foody/widgets/aorder_widget.dart';
+import 'package:foody/widgets/order_widget.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});

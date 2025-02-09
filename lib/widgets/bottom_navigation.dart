@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // A stateless widget that shows only the bottom navigation bar with three buttons.
 class BottomNavigation extends StatelessWidget {
@@ -21,9 +22,27 @@ class BottomNavigation extends StatelessWidget {
         NavigationDestination(
           selectedIcon: Icon(Icons.home),
           icon: Badge(
-              child: GestureDetector(
-                  onTap: () => Navigator.pushNamed(context, '/homescreen'),
-                  child: Icon(Icons.home))),
+            child: GestureDetector(
+              onTap: () async {
+                final currentUser = Supabase.instance.client.auth.currentUser;
+                if (currentUser != null) {
+                  final response = await Supabase.instance.client
+                      .from('profiles')
+                      .select('is_restaurant')
+                      .eq('id', currentUser.id)
+                      .single();
+                  final dynamic userRole = response['is_restaurant'];
+                 
+                  if (userRole) {
+                    Navigator.pushNamed(context, '/restauranthomepage'); // updated route
+                  } else {
+                    Navigator.pushNamed(context, '/homescreen');
+                  }
+                } 
+              },
+              child: Icon(Icons.home),
+            ),
+          ),
           label: 'Home',
         ),
         NavigationDestination(

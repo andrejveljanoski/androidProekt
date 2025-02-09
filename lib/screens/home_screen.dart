@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:foody/widgets/bottom_navigation.dart';
 import 'package:foody/widgets/restaurant_card.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,43 +11,59 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final List<Map<String, dynamic>> restaurants = [
-    {
-      'imageUrl': Image.asset('lib/assets/images/background.avif'),
-      'restaurantName': 'Pizza Palace',
-      'rating': 4.0,
-      'averagePrice': 20.99,
-    },
-    {
-      'imageUrl': Image.asset('lib/assets/images/background.avif'),
-      'restaurantName': 'Sushi Central',
-      'rating': 5.0,
-      'averagePrice': 35.00,
-    },
-    {
-      'imageUrl': Image.asset('lib/assets/images/background.avif'),
-      'restaurantName': 'Burger Bonanza',
-      'rating': 3.2,
-      'averagePrice': 15.99,
-    },
-  ];
+  final List<Map<String, dynamic>> _restaurants = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRestaurants();
+  }
+
+  Future<void> _fetchRestaurants() async {
+    try {
+      // Fetch profiles where is_restaurant flag is true
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('is_restaurant', true) as List<dynamic>;
+      setState(() {
+        _restaurants.clear();
+        for (final restaurant in data) {
+          _restaurants.add({
+            'imageUrl': restaurant['img_url'], // adjust column names if needed
+            'restaurantName': restaurant['restaurant_name'],
+            'rating':
+                restaurant['rating'] ?? 0.0, // default value if not provided
+            'averagePrice': restaurant['average_price'] ?? 0.0, // default value
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('Error fetching restaurants: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(),
-      body: ListView.builder(
-          itemCount: restaurants.length,
-          itemBuilder: (context, index) {
-            final restaurant = restaurants[index];
-            return RestaurantCard(
-              imageUrl: restaurant['imageUrl'],
-              restaurantName: restaurant['restaurantName'],
-              rating: restaurant['rating'],
-              averagePrice: restaurant['averagePrice'],
-            );
-          }),
-      bottomNavigationBar:
-          BottomNavigation(selectedIndex: 0, onDestinationSelected: (index) {}),
+      body: _restaurants.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              children: _restaurants.map((restaurant) {
+                return RestaurantCard(
+                  imageUrl: restaurant['imageUrl'] is String
+                      ? Image.network(restaurant['imageUrl'], fit: BoxFit.cover)
+                      : Image.asset('lib/assets/images/default.png',
+                          fit: BoxFit.cover),
+                  restaurantName: restaurant['restaurantName'] ?? '',
+                  rating: restaurant['rating'],
+                  averagePrice: restaurant['averagePrice'],
+                );
+              }).toList(),
+            ),
+      bottomNavigationBar: BottomNavigation(
+          selectedIndex: 0, onDestinationSelected: (index) {}),
     );
   }
 }
