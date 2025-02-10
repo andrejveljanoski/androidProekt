@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:foody/widgets/meal_list.dart';
@@ -34,7 +36,7 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
           .single();
 
       // Calculate delivery details after fetching restaurant data
-      if (data != null && data['address'] != null) {
+      if (data['address'] != null) {
         await _calculateDeliveryDetails(data['address']);
       }
 
@@ -54,8 +56,9 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
       final List<Location> restaurantCoords =
           await locationFromAddress(restaurantAddress);
 
-      if (restaurantCoords.isEmpty)
+      if (restaurantCoords.isEmpty) {
         throw Exception('Could not find restaurant location');
+      }
 
       // Calculate distance in kilometers
       final double distanceInMeters = Geolocator.distanceBetween(

@@ -254,7 +254,7 @@ class _EmailSignupState extends State<EmailSignup> {
 
     try {
       final sendReport = await send(message, smtpServer);
-      print('Email sent: ${sendReport.toString()}');
+      // print('Email sent: ${sendReport.toString()}');
     } catch (e) {
       debugPrint('Error sending email: $e');
     }
