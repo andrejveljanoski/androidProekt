@@ -22,7 +22,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchRestaurants() async {
     try {
-      // Fetch profiles where is_restaurant flag is true
       final data = await Supabase.instance.client
           .from('profiles')
           .select()
@@ -30,13 +29,21 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _restaurants.clear();
         for (final restaurant in data) {
+          // Convert numeric values to double
+          final rating = restaurant['rating'] != null 
+              ? (restaurant['rating'] as num).toDouble() 
+              : 0.0;
+          final avgPrice = restaurant['average_price'] != null 
+              ? (restaurant['average_price'] as num).toDouble() 
+              : 0.0;
+
           _restaurants.add({
             'id': restaurant['id'],
             'img_url': restaurant['img_url'],
             'restaurant_name': restaurant['restaurant_name'],
             'address': restaurant['address'],
-            'rating': restaurant['rating'] ?? 0.0,
-            'average_price': restaurant['average_price'] ?? 0.0,
+            'rating': rating,
+            'average_price': avgPrice,
           });
         }
       });

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:foody/widgets/meal.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:foody/widgets/meal_list.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class RestaurantScreen extends StatefulWidget {
   final Map<String, dynamic> restaurant;
@@ -14,7 +15,9 @@ class RestaurantScreen extends StatefulWidget {
 class _RestaurantScreenState extends State<RestaurantScreen> {
   late Future<Map<String, dynamic>?> _restaurantDetails;
   final Map<dynamic, Map<String, dynamic>> _selectedMeals = {};
-  List<Map<String, dynamic>> _meals = [];  // Add this line
+  List<Map<String, dynamic>> _meals = []; // Add this line
+  double? _deliveryFee;
+  String? _estimatedTime;
 
   @override
   void initState() {
@@ -29,10 +32,60 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
           .select()
           .eq('id', widget.restaurant['id'])
           .single();
+
+      // Calculate delivery details after fetching restaurant data
+      if (data != null && data['address'] != null) {
+        await _calculateDeliveryDetails(data['address']);
+      }
+
       return data;
     } catch (e) {
       debugPrint('Error fetching restaurant details: $e');
       return null;
+    }
+  }
+
+  Future<void> _calculateDeliveryDetails(String restaurantAddress) async {
+    try {
+      // Get current location
+      final Position currentPosition = await Geolocator.getCurrentPosition();
+
+      // Get restaurant coordinates from address
+      final List<Location> restaurantCoords =
+          await locationFromAddress(restaurantAddress);
+
+      if (restaurantCoords.isEmpty)
+        throw Exception('Could not find restaurant location');
+
+      // Calculate distance in kilometers
+      final double distanceInMeters = Geolocator.distanceBetween(
+        currentPosition.latitude,
+        currentPosition.longitude,
+        restaurantCoords.first.latitude,
+        restaurantCoords.first.longitude,
+      );
+
+      final double distanceInKm = distanceInMeters / 1000;
+
+      // Calculate delivery fee: Base fee $5 + $2 per km, rounded to 1 decimal place
+      final double fee =
+          double.parse((5 + (distanceInKm * 2)).toStringAsFixed(1));
+
+      // Calculate ETA: Assume average speed of 30 km/h
+      final double timeInHours = distanceInKm / 30;
+      final int timeInMinutes = (timeInHours * 60).round();
+
+      setState(() {
+        _deliveryFee = fee;
+        _estimatedTime = '$timeInMinutes min';
+      });
+    } catch (e) {
+      debugPrint('Error calculating delivery details: $e');
+      // Fallback to default values
+      setState(() {
+        _deliveryFee = 20.0; // Make sure default is also clean
+        _estimatedTime = '45 min';
+      });
     }
   }
 
@@ -53,9 +106,13 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
   double _calculateTotalPrice() {
     double total = 0;
     _selectedMeals.forEach((_, meal) {
-      total += (meal['price'] as num) * (meal['quantity'] as int);
+      // Convert price to double if it's an int
+      final price = (meal['price'] is int)
+          ? (meal['price'] as int).toDouble()
+          : meal['price'] as double;
+      total += price * (meal['quantity'] as int);
     });
-    return total + 20;
+    return total + (_deliveryFee ?? 20);
   }
 
   int _getTotalItems() {
@@ -75,6 +132,57 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
         _selectedMeals.remove(id);
       }
     });
+  }
+
+  Future<void> _createOrder() async {
+    try {
+      // Get current user
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please login to place an order')),
+        );
+        return;
+      }
+
+      // Create order
+      final orderData = await Supabase.instance.client
+          .from('orders')
+          .insert({
+            'amount': _calculateTotalPrice(),
+            'date_of_order': DateTime.now().toIso8601String(),
+            'customer_id': user.id,
+            'restaurant_id': widget.restaurant['id'],
+            'delivery_fee':
+                _deliveryFee ?? 5.0, // Add delivery fee to the order
+          })
+          .select()
+          .single();
+
+      // Create order items
+      final orderItems = _selectedMeals.entries
+          .map((entry) => {
+                'order_id': orderData['id'],
+                'meal_id': entry.key,
+                'quantity': entry.value['quantity'],
+                'price_at_order': entry.value['price'],
+              })
+          .toList();
+
+      await Supabase.instance.client.from('orders_table').insert(orderItems);
+
+      // Show success message and navigate
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Order placed successfully!')),
+        );
+        Navigator.of(context).pushReplacementNamed('/orders');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error placing order: $e')),
+      );
+    }
   }
 
   @override
@@ -169,7 +277,15 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
                               ],
                             ),
                             const SizedBox(height: 8),
-                            const Text('Delivery Fee: \$20'),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                    'Delivery Fee: \$${_deliveryFee?.toStringAsFixed(2) ?? "Calculating..."}'),
+                                Text(
+                                    'ETA: ${_estimatedTime ?? "Calculating..."}'),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -192,14 +308,16 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
                           return const Center(
                               child: CircularProgressIndicator());
                         } else if (snapshot.hasError) {
-                          return const Center(child: Text('Error fetching meals'));
+                          return const Center(
+                              child: Text('Error fetching meals'));
                         } else if (!snapshot.hasData ||
                             snapshot.data!.isEmpty) {
                           return const Center(
                               child: Text('No meals available'));
                         }
 
-                        final meals = List<Map<String, dynamic>>.from(snapshot.data!);
+                        final meals =
+                            List<Map<String, dynamic>>.from(snapshot.data!);
                         return MealList(
                           meals: meals,
                           selectedMeals: _selectedMeals,
@@ -232,24 +350,32 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           ..._selectedMeals.entries.map((entry) => Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4.0),
                                 child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text('${entry.value['name']} x${entry.value['quantity']}'),
-                                    Text('\$${(entry.value['price'] * entry.value['quantity']).toStringAsFixed(2)}'),
+                                    Text(
+                                        '${entry.value['name']} x${entry.value['quantity']}'),
+                                    Text(
+                                        '\$${(entry.value['price'] * entry.value['quantity']).toStringAsFixed(2)}'),
                                   ],
                                 ),
                               )),
                           const Divider(),
-                          const Text('Delivery Fee: \$20.00'),
+                          Text('Delivery Fee: \$$_deliveryFee'),
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Total:', style: TextStyle(fontWeight: FontWeight.bold)),
-                              Text('\$${_calculateTotalPrice().toStringAsFixed(2)}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold)),
+                              const Text('Total:',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                              Text(
+                                  '\$${_calculateTotalPrice().toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ],
@@ -261,8 +387,8 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
                         ),
                         ElevatedButton(
                           onPressed: () {
-                            // Handle checkout
                             Navigator.of(context).pop();
+                            _createOrder();
                           },
                           child: const Text('Confirm Order'),
                         ),

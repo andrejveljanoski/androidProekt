@@ -45,7 +45,11 @@ class _RestaurantHomepageState extends State<RestaurantHomepage> {
   // Update _addMeal to be asynchronous and insert to supabase before updating _meals
   Future<void> _addMeal() async {
     if (!_formKey.currentState!.validate()) return;
-    final double price = double.tryParse(_priceController.text) ?? 0.0;
+    // New logic to parse price as double even if an integer is entered:
+    final priceText = _priceController.text;
+    double price = double.tryParse(priceText) ?? 
+        (int.tryParse(priceText)?.toDouble() ?? 0.0);
+  
     final String? bossId = Supabase.instance.client.auth.currentUser?.id;
     if (bossId == null) {
       if (!mounted) return;

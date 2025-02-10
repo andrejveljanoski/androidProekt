@@ -58,6 +58,8 @@ class _AccountScreenState extends State<AccountScreen> {
       setState(() {
         _isRestaurant = response['is_restaurant'] == true;
         _address = response['address'] ?? '';
+        // Added this line to preserve the updated profile image.
+        _profileImageUrl = response['img_url'];
         if (_isRestaurant) {
           _restaurantNameController.text = response['restaurant_name'] ?? '';
           _displayName =
@@ -162,29 +164,24 @@ class _AccountScreenState extends State<AccountScreen> {
     if (image != null) {
       try {
         Uint8List bytes = await image.readAsBytes();
-        // Generate a unique filename, e.g., using the current timestamp.
         final String fileName =
             'image_${DateTime.now().millisecondsSinceEpoch}${image.name}';
         final String uploadResult = await Supabase.instance.client.storage
             .from('images')
             .uploadBinary(fileName, bytes);
 
-        // Check if uploadResult is non-empty.
         if (uploadResult.isNotEmpty) {
           final String publicUrl = Supabase.instance.client.storage
               .from('images')
               .getPublicUrl(fileName);
-          // Update the profiles table with the new profile image URL.
           final user = Supabase.instance.client.auth.currentUser;
           if (user != null) {
             await Supabase.instance.client
                 .from('profiles')
                 .update({'img_url': publicUrl}).eq('id', user.id);
           }
-          if (!mounted) return;
-          setState(() {
-            _profileImageUrl = publicUrl;
-          });
+          // Force re-fetch profile to update state.
+          await _fetchProfile();
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(

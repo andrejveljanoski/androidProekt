@@ -77,8 +77,24 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Text("Hello"),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushReplacementNamed(context, '/login');
+        onPressed: () async {
+          final currentUser = Supabase.instance.client.auth.currentUser;
+          if (currentUser != null) {
+            final response = await Supabase.instance.client
+                .from('profiles')
+                .select('is_restaurant')
+                .eq('id', currentUser.id)
+                .single();
+            final dynamic userRole = response['is_restaurant'];
+            
+            if (userRole) {
+              Navigator.pushNamed(context, '/restauranthomepage'); // updated route
+            } else {
+              Navigator.pushNamed(context, '/homescreen');
+            }
+          } else {
+            Navigator.pushReplacementNamed(context, '/login');
+          }
         },
         tooltip: 'Nav',
         child: const Icon(Icons.login),
